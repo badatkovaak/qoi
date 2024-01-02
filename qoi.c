@@ -335,7 +335,9 @@ un qoi_decode(const void* image, size_t len, const void* res){
         }
         buffer[hash(prev)] = prev;
         curr_index++;
+        
     }
+    return out_len;
 }
 
 un write_qoi(const char *path, const void *data, const qoi_desc *desc, un out_len)
