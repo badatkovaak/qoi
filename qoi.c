@@ -299,11 +299,14 @@ un qoi_decode(const void* image, size_t len, const void* res){
                     printf("No such pixel in buffer\n");
                     return 0;
                 }
+                break;
+
             case 2:
                 b1 = data[curr_index];
                 prev = (Pixel) {.r = prev.r + (b1 >> 4 - 6),.g = prev.g + (b1 >> 2 % 4 - 2), .b = prev.b + (b1 % 4 - 2), .a = prev.a};
                 output[out_len] = prev;
                 out_len++;
+                break;
             case 3:
                 b1 = data[curr_index];
                 b2 = data[curr_index + 1];
@@ -312,19 +315,23 @@ un qoi_decode(const void* image, size_t len, const void* res){
                 output[out_len] = prev;
                 out_len++;
                 curr_index++;
+                break;
             case 4:
                 for (un i = 0; i < data[curr_index] + 1; i++){
                     output[out_len + i] = prev;
                 }
                 out_len += data[curr_index];
+                break;
             case 5:
                 prev = (Pixel) {.r = data[curr_index + 1], .g = data[curr_index + 2], .b = data[curr_index + 3], .a = prev.a};
                 output[out_len] = prev;
                 out_len++;
+                break;
             case 6:
                 prev = (Pixel) {.r = data[curr_index + 1], .g = data[curr_index + 2], .b = data[curr_index + 3], .a = data[curr_index + 4]};
                 output[out_len] = prev;
                 out_len++;
+                break;
         }
         buffer[hash(prev)] = prev;
         curr_index++;
