@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #define cond_diff(p, c)                                             \
@@ -61,7 +62,9 @@ Pixel generate_pixel_rgba() {
         rand() % 16 + 120,
         rand() % 16 + 120,
         rand() % 16 + 120,
-        // rand() % 32 + 112,
+        // rand() % 128 + 64,
+        // rand() % 128 + 64,
+        // rand() % 128 + 64,
         255,
     };
     return res;
@@ -157,9 +160,19 @@ Vector qoi_encode(const void* image, const qoi_desc* desc) {
         if (cond1) {
             un run_len = 1;
             Pixel prev1 = curr;
-            Pixel curr1 = data[curr_index + run_len];
+            Pixel curr1;
 
-            while (cond_eq(prev1, curr1) && run_len < 63) {
+            if (curr_index + 1 < img_size) {
+                curr1 = data[curr_index + run_len];
+            } else {
+                output[out_len] = 0xc0 + run_len - 1;
+                out_len++;
+                curr_index++;
+                continue;
+            }
+
+            while (cond_eq(prev1, curr1) && run_len < 63 &&
+                   curr_index + run_len + 1 < img_size) {
                 run_len += 1;
                 prev1 = curr1;
                 curr1 = data[curr_index + run_len];
@@ -211,6 +224,7 @@ Vector qoi_encode(const void* image, const qoi_desc* desc) {
     }
     output = realloc(output, out_len);
 
+    free(buffer);
     // data_w_len res = {(void *)output, out_len};
     return (Vector){output, out_len};
 }
@@ -220,7 +234,7 @@ un decode_byte(unchar b) {
         return 5;
     } else if (b == 0xff) {
         return 6;
-    } else if (b <= 63) {
+    } else if ((b >> 6) == 0) {
         return 1;
     } else if ((b >> 6) == 1) {
         return 2;
@@ -244,11 +258,13 @@ Vector qoi_decode(const void* image, size_t length, const qoi_desc* desc) {
     // Pixel curr = {0,0,0,255};
     Pixel prev = {0, 0, 0, 255};
 
-    Pixel* output = (Pixel*)malloc(desc->width * desc->height * desc->channels);
+    un out_size = desc->width * desc->height * desc->channels;
+    Pixel* output = (Pixel*)malloc(out_size);
     un out_len = 0;
     unchar byte1, byte2;
-    int buff_index;
+    un run;
     int diff_g;
+    // printf("%lu\n", out_size);
 
     while (curr_index < length) {
         switch (decode_byte(data[curr_index])) {
@@ -256,20 +272,13 @@ Vector qoi_decode(const void* image, size_t length, const qoi_desc* desc) {
                 printf("Incorrect byte sequence!\n");
                 return (Vector){0, 0};
             case 1:
-
-                // buff_index = cond_buf(prev, buffer, 64);
-                // if (buff_index != -1) {
-                output[out_len] = buffer[data[curr_index]];
-                //     prev = buffer[buff_index];
+                // printf("case 1\n");
+                prev = buffer[data[curr_index]];
+                output[out_len] = prev;
                 out_len++;
-                // } else {
-                //     printf("");
-                //     printf("No such pixel in buffer\n");
-                //     return (Vector){0, 0};
-                // }
                 break;
-
             case 2:
+                // printf("case 2\n");
                 byte1 = data[curr_index];
                 prev = (Pixel){.r = prev.r + ((byte1 >> 4) - 6),
                                .g = prev.g + ((byte1 >> 2) % 4 - 2),
@@ -279,6 +288,7 @@ Vector qoi_decode(const void* image, size_t length, const qoi_desc* desc) {
                 out_len++;
                 break;
             case 3:
+                // printf("case 3\n");
                 byte1 = data[curr_index];
                 byte2 = data[curr_index + 1];
                 diff_g = prev.g + byte1 & 63 - 32;
@@ -291,31 +301,40 @@ Vector qoi_decode(const void* image, size_t length, const qoi_desc* desc) {
                 curr_index++;
                 break;
             case 4:
-                for (un i = 0; i < data[curr_index] + 1; i++) {
+                // printf("case 4: ");
+                run = data[curr_index] - 0xc0 + 1;
+                // printf("%u %lu %lu\n", data[curr_index], curr_index, run);
+                for (un i = 0; i < run; i++) {
+                    // printf("hi there %lu %lu\n", out_len + i, out_size);
                     output[out_len + i] = prev;
                 }
-                out_len += data[curr_index];
+                out_len += run;
                 break;
             case 5:
+                // printf("case 5\n");
                 prev = (Pixel){.r = data[curr_index + 1],
                                .g = data[curr_index + 2],
                                .b = data[curr_index + 3],
                                .a = prev.a};
                 output[out_len] = prev;
                 out_len++;
+                curr_index += 3;
                 break;
             case 6:
+                // printf("case 6\n");
                 prev = (Pixel){.r = data[curr_index + 1],
                                .g = data[curr_index + 2],
                                .b = data[curr_index + 3],
                                .a = data[curr_index + 4]};
                 output[out_len] = prev;
                 out_len++;
+                curr_index += 4;
                 break;
         }
         buffer[hash(prev)] = prev;
         curr_index++;
     }
+    free(buffer);
     return (Vector){output, out_len};
 }
 
@@ -331,8 +350,9 @@ un write_qoi(const char* path, Vector data, const qoi_desc* desc) {
     un header = fwrite(desc, 1, 10, f);
     un res = fwrite(data.data, 1, data.len, f);
     uint64_t one = 1ULL << (8 * 7);
-    printf("%lx\n", one);
+    // printf("%lx\n", one);
     un on = fwrite(&one, 1, 8, f);
+    fclose(f);
     return mg + header + res + on;
 }
 
@@ -347,8 +367,16 @@ Vector read_qoi(const char* path, void* desc) {
     fseek(f, 0, SEEK_SET);
 
     void* buff1 = malloc(4);
-    un magic_s = fread(buff1, 4, 1, f);
-    un desc_s = fread(desc, 10, 1, f);
+    un magic_s = fread(buff1, 1, 4, f);
+    char* magic = (char*)buff1;
+
+    if (strncmp(magic, "qoif", 4)) {
+        printf("Not a .qoi file");
+        return (Vector){0, 0};
+    }
+    free(buff1);
+
+    un desc_s = fread(desc, 1, 10, f);
     un img_size = size - 22;
     void* image = malloc(img_size);
     un image_s = fread(image, img_size, 1, f);
@@ -361,28 +389,38 @@ int main() {
     // srand(time(0));
 
     // vec d = read_file_bin("assets/testcard_rgba.qoi");
-    Vector d = read_file_bin("assets/testcard.qoi");
-    print_unchar(d.data, d.len);
-    // free((void*)d.data);
-    printf("\n\n\n\n");
+    // Vector d = read_file_bin("assets/testcard.qoi");
+    // print_unchar(d.data, d.len);
+    // printf("\n\n\n\n\n\n\n\n");
 
     qoi_desc desc = {0, 0, 0, 0};
 
-    Vector r1 = read_qoi("assets/testcard.qoi", &desc);
+    Vector r1 = read_qoi("assets/rand2.qoi", &desc);
     desc.height = switch_endianness(desc.height);
     desc.width = switch_endianness(desc.width);
-    print_unchar(r1.data, r1.len);
-
-    printf("\n\n\n\n");
     const qoi_desc desc1 = desc;
-    Vector r2 = qoi_decode(r1.data, r2.len, &desc1);
-    print_unchar(r2.data, r2.len);
+    // print_unchar(r1.data, r1.len);
+
+    // printf("\n\n\n\n");
+    printf("%lu\n", r1.len);
+    Vector r2 = qoi_decode(r1.data, r1.len, &desc1);
+    free(r1.data);
+    // print_unchar(r2.data, r2.len);
     printf("%x %x %x %x \n", desc.width, desc.height, desc.channels,
            desc.colorspace);
-    printf("\n\n\n\n");
+    // printf("\n\n\n\n");
     Vector r3 = qoi_encode(r2.data, &desc1);
+    free(r2.data);
+    desc.height = switch_endianness(desc.height);
+    desc.width = switch_endianness(desc.width);
+    // const qoi_desc desc1 = desc;
     print_unchar(r3.data, r3.len);
-    un r = write_qoi("assets/img.qoi", r3, &desc1);
+    un r = write_qoi("assets/img.qoi", r3, &desc);
+    free(r3.data);
+
+    // // Vector d = read_file_bin("assets/img.qoi");
+    // // // print_unchar(d.data, d.len);
+    // // free(d.data);
 
     // const uint32_t width = 16;
     // const uint32_t height = 16;
@@ -390,15 +428,15 @@ int main() {
     // const Pixel* image = generate_data_rgba(width, height);
     // // print_image(image, height * width);
     //
-    // const qoi_desc desc = {width, height, e4, 0};
-    // const void* data = malloc(width * height * 5);
-    // const un len = qoi_encode(image, &desc, data);
+    // const qoi_desc desc = {width, height, 4, 0};
+    // // const void* data = malloc(width * height * 5);
+    // Vector d = qoi_encode(image, &desc);
     // // free((void*)image);
     //
     // const qoi_desc desc1 = {switch_endianness(width),
     // switch_endianness(height),
     //                         4, 1};
-    // un r = write_qoi("assets/img.qoi", data, &desc1, len);
+    // un r = write_qoi("assets/rand3.qoi", d, &desc1);
     // printf("%lu\n", r);
     // free((void*)d.data);
 
