@@ -1,3 +1,5 @@
+#include "qoi.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -24,36 +26,19 @@ typedef enum {
 } qoi_op;
 
 typedef struct {
-    void* data;
-    un len;
-} vector;
+    unchar r, g, b;
+} pixel_rgb;
 
 typedef struct {
-    uint32_t width;
-    uint32_t height;
-    uint8_t channels;
-    uint8_t colorspace;
-} qoi_desc;
-
-typedef struct {
-    unchar r;
-    unchar g;
-    unchar b;
-} Pixel_rgb;
-
-typedef struct {
-    unchar r;
-    unchar g;
-    unchar b;
-    unchar a;
-} Pixel;
+    unchar r, g, b, a;
+} pixel;
 
 uint32_t switch_endianness(uint32_t value) {
     return ((value >> 24) & 0xFF) | ((value >> 8) & 0xFF00) |
            ((value << 8) & 0xFF0000) | ((value << 24) & 0xFF000000);
 }
 
-bool cond_diff(Pixel c, Pixel p) {
+bool cond_diff(pixel c, pixel p) {
     char dr = c.r - p.r;
     char dg = c.g - p.g;
     char db = c.b - p.b;
@@ -66,7 +51,7 @@ bool cond_diff(Pixel c, Pixel p) {
     return false;
 }
 
-bool cond_luma(Pixel c, Pixel p) {
+bool cond_luma(pixel c, pixel p) {
     char dg = c.g - p.g;
     char dr_dg = c.r - p.r - dg;
     char db_dg = c.b - p.b - dg;
@@ -80,14 +65,14 @@ bool cond_luma(Pixel c, Pixel p) {
 }
 
 vector qoi_encode(const void* image, const qoi_desc* desc) {
-    Pixel* data = (Pixel*)image;
-    Pixel* buffer = (Pixel*)malloc(64 * 4);
+    pixel* data = (pixel*)image;
+    pixel* buffer = (pixel*)malloc(64 * 4);
     for (un i = 0; i < 64; i++) {
-        buffer[i] = (Pixel){.r = 0, .g = 0, .b = 0, .a = 0};
+        buffer[i] = (pixel){.r = 0, .g = 0, .b = 0, .a = 0};
     }
 
-    Pixel prev, prev1, curr1;
-    Pixel curr = {0, 0, 0, 255};
+    pixel prev, prev1, curr1;
+    pixel curr = {0, 0, 0, 255};
 
     un curr_index = 0;
     un img_size = desc->height * desc->width;
@@ -197,21 +182,21 @@ vector qoi_decode(vector image, const qoi_desc* desc) {
     un curr_index = 0;
     unchar* data = (unchar*)image.data;
 
-    Pixel* buffer = (Pixel*)malloc(256);
+    pixel* buffer = (pixel*)malloc(256);
     if (buffer == NULL) {
         printf("malloc failed! \n");
         return (vector){0, 0};
     }
 
     for (un i = 0; i < 64; i++) {
-        buffer[i] = (Pixel){.r = 0, .g = 0, .b = 0, .a = 0};
+        buffer[i] = (pixel){.r = 0, .g = 0, .b = 0, .a = 0};
     }
 
-    Pixel prev = {0, 0, 0, 255};
+    pixel prev = {0, 0, 0, 255};
 
     un out_size = desc->width * desc->height * 4;
 
-    Pixel* output = (Pixel*)malloc(out_size);
+    pixel* output = (pixel*)malloc(out_size);
     if (output == 0) {
         free(buffer);
         printf("malloc failed! \n");
@@ -237,7 +222,7 @@ vector qoi_decode(vector image, const qoi_desc* desc) {
                 break;
             case QOI_OP_DIFF:
                 byte1 = data[curr_index];
-                prev = (Pixel){.r = prev.r + ((byte1 >> 4) - 6),
+                prev = (pixel){.r = prev.r + ((byte1 >> 4) - 6),
                                .g = prev.g + ((byte1 >> 2) % 4 - 2),
                                .b = prev.b + (byte1 % 4 - 2),
                                .a = prev.a};
@@ -248,7 +233,7 @@ vector qoi_decode(vector image, const qoi_desc* desc) {
                 byte1 = data[curr_index];
                 byte2 = data[curr_index + 1];
                 diff_g = byte1 - QOI_OP_LUMA - 32;
-                prev = (Pixel){.r = prev.r + diff_g + (byte2 >> 4) - 8,
+                prev = (pixel){.r = prev.r + diff_g + (byte2 >> 4) - 8,
                                .g = prev.g + diff_g,
                                .b = prev.b + diff_g + byte2 % 16 - 8,
                                .a = prev.a};
@@ -264,7 +249,7 @@ vector qoi_decode(vector image, const qoi_desc* desc) {
                 out_len += run;
                 break;
             case QOI_OP_RGB:
-                prev = (Pixel){.r = data[curr_index + 1],
+                prev = (pixel){.r = data[curr_index + 1],
                                .g = data[curr_index + 2],
                                .b = data[curr_index + 3],
                                .a = prev.a};
@@ -273,7 +258,7 @@ vector qoi_decode(vector image, const qoi_desc* desc) {
                 curr_index += 3;
                 break;
             case QOI_OP_RGBA:
-                prev = (Pixel){.r = data[curr_index + 1],
+                prev = (pixel){.r = data[curr_index + 1],
                                .g = data[curr_index + 2],
                                .b = data[curr_index + 3],
                                .a = data[curr_index + 4]};
