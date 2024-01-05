@@ -24,14 +24,6 @@ typedef enum {
 } qoi_op;
 
 typedef struct {
-    unchar op;
-    unchar r;
-    unchar g;
-    unchar b;
-    unchar a;
-} full_rep;
-
-typedef struct {
     void* data;
     un len;
 } Vector;
@@ -61,17 +53,6 @@ uint32_t switch_endianness(uint32_t value) {
            ((value << 8) & 0xFF0000) | ((value << 24) & 0xFF000000);
 }
 
-uint64_t swi_end(uint64_t value) {
-    return ((value & 0x00000000000000FF) << 56) |
-           ((value & 0x000000000000FF00) << 40) |
-           ((value & 0x0000000000FF0000) << 24) |
-           ((value & 0x00000000FF000000) << 8) |
-           ((value & 0x000000FF00000000) >> 8) |
-           ((value & 0x0000FF0000000000) >> 24) |
-           ((value & 0x00FF000000000000) >> 40) |
-           ((value & 0xFF00000000000000) >> 56);
-}
-
 bool cond_diff(Pixel c, Pixel p) {
     char dr = c.r - p.r;
     char dg = c.g - p.g;
@@ -97,96 +78,6 @@ bool cond_luma(Pixel c, Pixel p) {
     }
     return false;
 }
-
-// Pixel generate_pixel_rgba(unchar mode) {
-//     Pixel res;
-//     if (mode == 1) {
-//         res = (Pixel){
-//             rand() % 16 + 120,
-//             rand() % 16 + 120,
-//             rand() % 16 + 120,
-//             255,
-//         };
-//     } else if (mode == 2) {
-//         res = (Pixel){
-//             rand() % 128 + 64,
-//             rand() % 128 + 64,
-//             rand() % 128 + 64,
-//             255,
-//         };
-//     } else if (mode == 3) {
-//         res = (Pixel){
-//             rand() % 256,
-//             rand() % 256,
-//             rand() % 256,
-//             255,
-//         };
-//     }
-//
-//     return res;
-// }
-//
-// Pixel* generate_data_rgba(uint32_t width, uint32_t height, unchar mode) {
-//     un size = width * height;
-//     Pixel* data = (Pixel*)malloc(size * 4);
-//     for (un i = 0; i < size; i++) {
-//         data[i] = generate_pixel_rgba(mode);
-//     }
-//     return data;
-// }
-//
-// void print_image(const Pixel* d, un size) {
-//     for (un i = 0; i < size; i++) {
-//         printf("r: %u, g: %u, b: %u, a: %u\n", d[i].r, d[i].g, d[i].b,
-//         d[i].a);
-//     }
-// }
-//
-// Vector read_file_bin(const char* path) {
-//     FILE* f = fopen(path, "rb");
-//     if (f == NULL) {
-//         Vector r = {0, 0};
-//         return r;
-//     }
-//
-//     fseek(f, 0, SEEK_END);
-//     size_t size = ftell(f);
-//     fseek(f, 0, SEEK_SET);
-//
-//     unchar* buffer = (unchar*)malloc(size);
-//
-//     fread(buffer, size, 1, f);
-//     fclose(f);
-//
-//     Vector res = {buffer, size};
-//     return res;
-// }
-
-un write_image(const char* path, Vector image) {
-    FILE* f = fopen(path, "w");
-    if (f == 0) return 0;
-    un res = fwrite(image.data, 1, image.len, f);
-    fclose(f);
-    return res;
-}
-
-// void print_vec(Vector v) {
-//     for (un i = 0; i < v.len; i++) {
-//         printf("%x ", ((unchar*)v.data)[i]);
-//     }
-//     printf("\n");
-// }
-//
-// void print_buffer(Pixel* buffer, size_t len) {
-//     printf("\n");
-//     for (un i = 0; i < len / 4; i++) {
-//         for (un j = 0; j < 4; j++) {
-//             printf("%02lu: %08x ", 4 * i + j, buffer[i * 4 + j]);
-//         }
-//         printf("\n");
-//     }
-//     printf("\n");
-// }
 
 Vector qoi_encode(const void* image, const qoi_desc* desc) {
     Pixel* data = (Pixel*)image;
@@ -318,7 +209,7 @@ Vector qoi_decode(Vector image, const qoi_desc* desc) {
 
     Pixel prev = {0, 0, 0, 255};
 
-    un out_size = desc->width * desc->height * desc->channels;
+    un out_size = desc->width * desc->height * 4;
 
     Pixel* output = (Pixel*)malloc(out_size);
     if (output == 0) {
@@ -395,7 +286,7 @@ Vector qoi_decode(Vector image, const qoi_desc* desc) {
         curr_index++;
     }
     free((void*)buffer);
-    return (Vector){output, out_len * 4};
+    return (Vector){realloc(output, out_len * 4), out_len * 4};
 }
 
 un write_qoi(const char* path, Vector data, const qoi_desc* desc) {
@@ -410,7 +301,6 @@ un write_qoi(const char* path, Vector data, const qoi_desc* desc) {
     un header = fwrite(desc, 1, 10, f);
     un res = fwrite(data.data, 1, data.len, f);
     uint64_t one = 1ULL << (8 * 7);
-    // printf("%lx\n", one);
     un on = fwrite(&one, 1, 8, f);
     fclose(f);
     return mg + header + res + on;
@@ -443,26 +333,4 @@ Vector read_qoi(const char* path, void* desc) {
 
     fclose(f);
     return (Vector){image, img_size};
-}
-
-int main() {
-    printf("\n");
-
-    qoi_desc desc = {0, 0, 0, 0};
-    Vector r1 = read_qoi("assets/kodim23.qoi", &desc);
-    desc.height = switch_endianness(desc.height);
-    desc.width = switch_endianness(desc.width);
-    const qoi_desc desc1 = desc;
-    printf("%lu\n", r1.len);
-    Vector r2 = qoi_decode(r1, &desc1);
-    // free(r1.data);
-    Vector r3 = qoi_encode(r2.data, &desc1);
-    // free(r2.data);
-    desc.height = switch_endianness(desc.height);
-    desc.width = switch_endianness(desc.width);
-    un r = write_qoi("assets/img.qoi", r3, &desc);
-    // free(r3.data);
-
-    printf("\n");
-    return 0;
 }
