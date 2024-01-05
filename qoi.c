@@ -26,7 +26,7 @@ typedef enum {
 typedef struct {
     void* data;
     un len;
-} Vector;
+} vector;
 
 typedef struct {
     uint32_t width;
@@ -79,7 +79,7 @@ bool cond_luma(Pixel c, Pixel p) {
     return false;
 }
 
-Vector qoi_encode(const void* image, const qoi_desc* desc) {
+vector qoi_encode(const void* image, const qoi_desc* desc) {
     Pixel* data = (Pixel*)image;
     Pixel* buffer = (Pixel*)malloc(64 * 4);
     for (un i = 0; i < 64; i++) {
@@ -173,7 +173,7 @@ Vector qoi_encode(const void* image, const qoi_desc* desc) {
     output = realloc(output, out_len);
 
     free(buffer);
-    return (Vector){output, out_len};
+    return (vector){output, out_len};
 }
 
 un decode_byte(unchar b) {
@@ -193,14 +193,14 @@ un decode_byte(unchar b) {
     return 1;
 }
 
-Vector qoi_decode(Vector image, const qoi_desc* desc) {
+vector qoi_decode(vector image, const qoi_desc* desc) {
     un curr_index = 0;
     unchar* data = (unchar*)image.data;
 
     Pixel* buffer = (Pixel*)malloc(256);
     if (buffer == NULL) {
         printf("malloc failed! \n");
-        return (Vector){0, 0};
+        return (vector){0, 0};
     }
 
     for (un i = 0; i < 64; i++) {
@@ -215,7 +215,7 @@ Vector qoi_decode(Vector image, const qoi_desc* desc) {
     if (output == 0) {
         free(buffer);
         printf("malloc failed! \n");
-        return (Vector){0, 0};
+        return (vector){0, 0};
     }
 
     un out_len = 0;
@@ -229,7 +229,7 @@ Vector qoi_decode(Vector image, const qoi_desc* desc) {
                 free(buffer);
                 free(output);
                 printf("Incorrect byte sequence!\n");
-                return (Vector){0, 0};
+                return (vector){0, 0};
             case QOI_OP_INDEX:
                 prev = buffer[data[curr_index]];
                 output[out_len] = prev;
@@ -286,10 +286,10 @@ Vector qoi_decode(Vector image, const qoi_desc* desc) {
         curr_index++;
     }
     free((void*)buffer);
-    return (Vector){realloc(output, out_len * 4), out_len * 4};
+    return (vector){realloc(output, out_len * 4), out_len * 4};
 }
 
-un write_qoi(const char* path, Vector data, const qoi_desc* desc) {
+un write_qoi(const char* path, vector data, const qoi_desc* desc) {
     FILE* f = fopen(path, "wb");
     if (f == NULL) {
         printf("Error!\n");
@@ -306,10 +306,10 @@ un write_qoi(const char* path, Vector data, const qoi_desc* desc) {
     return mg + header + res + on;
 }
 
-Vector read_qoi(const char* path, void* desc) {
+vector read_qoi(const char* path, void* desc) {
     FILE* f = fopen(path, "r");
     if (f == NULL) {
-        return (Vector){0, 0};
+        return (vector){0, 0};
     }
 
     fseek(f, 0, SEEK_END);
@@ -322,7 +322,7 @@ Vector read_qoi(const char* path, void* desc) {
 
     if (strncmp(magic, "qoif", 4)) {
         printf("Not a .qoi file");
-        return (Vector){0, 0};
+        return (vector){0, 0};
     }
     free(buff1);
 
@@ -332,5 +332,5 @@ Vector read_qoi(const char* path, void* desc) {
     un image_s = fread(image, img_size, 1, f);
 
     fclose(f);
-    return (Vector){image, img_size};
+    return (vector){image, img_size};
 }
