@@ -1,3 +1,3 @@
-An implementation of qoi to raw binary encoder/decoder
+An implementation of QOI to raw binary encoder/decoder
 
-Specification of the qoi format can be found here https://qoiformat.org
+Specification of the QOI format can be found here https://qoiformat.org
