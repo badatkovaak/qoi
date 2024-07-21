@@ -107,11 +107,11 @@ void print_buffer(Pixel* buffer, size_t len) {
 int main() {
     printf("\n");
 
-    qoi_desc desc = {0, 0, 0, 0};
+    QoiDescription desc = {0, 0, 0, 0};
     Vector r1 = read_qoi("assets/baboon.qoi", &desc);
     desc.height = switch_endianness(desc.height);
     desc.width = switch_endianness(desc.width);
-    const qoi_desc desc1 = desc;
+    const QoiDescription desc1 = desc;
     // printf("%lu\n", r1.len);
     Vector r2 = qoi_decode(r1, &desc1);
     write_image("assets/img.bin", r2);
@@ -123,7 +123,7 @@ int main() {
     un r = write_qoi("assets/img.qoi", r3, &desc);
     free(r3.data);
 
-    qoi_desc d1 = {256, 256, 4, 7};
+    QoiDescription d1 = {256, 256, 4, 7};
     Vector v1 = read_file_bin("assets/img1.bin");
     Vector v2 = qoi_encode(v1.data, &d1);
     write_qoi("assets/img1.qoi", v2, &d1);

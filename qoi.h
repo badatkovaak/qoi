@@ -11,13 +11,14 @@ typedef struct {
 typedef struct {
     uint32_t width, height;
     uint8_t channels, colorspace;
-} qoi_desc;
+} QoiDescription;
 
-Vector qoi_encode(const void* image, const qoi_desc* desc);
+Vector qoi_encode(const void* image, const QoiDescription* desc);
 
-Vector qoi_decode(Vector image, const qoi_desc* desc);
+Vector qoi_decode(Vector image, const QoiDescription* desc);
 
-unsigned long write_qoi(const char* path, Vector data, const qoi_desc* desc);
+unsigned long write_qoi(const char* path, Vector data,
+                        const QoiDescription* desc);
 
 Vector read_qoi(const char* path, void* desc);
 
