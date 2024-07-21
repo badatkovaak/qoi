@@ -31,77 +31,65 @@ typedef struct {
 
 typedef struct {
     unchar r, g, b, a;
-} pixel;
+} Pixel;
 
 uint32_t switch_endianness(uint32_t value) {
     return ((value >> 24) & 0xFF) | ((value >> 8) & 0xFF00) |
            ((value << 8) & 0xFF0000) | ((value << 24) & 0xFF000000);
 }
 
-bool cond_diff(pixel c, pixel p) {
-    char dr = c.r - p.r;
-    char dg = c.g - p.g;
-    char db = c.b - p.b;
+bool cond_diff(Pixel curr, Pixel prev) {
+    char dr = curr.r - prev.r;
+    char dg = curr.g - prev.g;
+    char db = curr.b - prev.b;
     bool cond_r = dr + 2 >= 0 && dr <= 1;
     bool cond_g = dg + 2 >= 0 && dg <= 1;
     bool cond_b = db + 2 >= 0 && db <= 1;
-    if (cond_r && cond_g && cond_b && c.a == p.a) {
-        return true;
-    }
-    return false;
+    return cond_r && cond_g && cond_b && curr.a == prev.a;
 }
 
-bool cond_luma(pixel c, pixel p) {
-    char dg = c.g - p.g;
-    char dr_dg = c.r - p.r - dg;
-    char db_dg = c.b - p.b - dg;
+bool cond_luma(Pixel curr, Pixel prev) {
+    char dg = curr.g - prev.g;
+    char dr_dg = curr.r - prev.r - dg;
+    char db_dg = curr.b - prev.b - dg;
     bool cond_g = dg + 32 >= 0 && dg <= 31;
     bool cond_r = dr_dg + 8 >= 0 && dr_dg <= 7;
     bool cond_b = db_dg + 8 >= 0 && db_dg <= 7;
-    if (cond_r && cond_g && cond_b && c.a == p.a) {
-        return true;
-    }
-    return false;
+    return cond_r && cond_g && cond_b && curr.a == prev.a;
 }
 
-vector qoi_encode(const void* image, const qoi_desc* desc) {
-    pixel* data = (pixel*)image;
-    pixel* buffer = (pixel*)malloc(64 * 4);
+Vector qoi_encode(const void* image, const qoi_desc* desc) {
+    Pixel* data = (Pixel*)image;
+
+    Pixel* buffer = malloc(64 * 4);
     for (un i = 0; i < 64; i++) {
-        buffer[i] = (pixel){.r = 0, .g = 0, .b = 0, .a = 0};
+        buffer[i] = (Pixel){.r = 0, .g = 0, .b = 0, .a = 0};
     }
 
-    pixel prev, prev1, curr1;
-    pixel curr = {0, 0, 0, 255};
+    Pixel current = {0, 0, 0, 255};
+    Pixel previous = current;
 
     un curr_index = 0;
     un img_size = desc->height * desc->width;
-    bool qoi_op_run, qoi_op_index, qoi_op_diff, qoi_op_luma;
-    char dg, dr_dg, db_dg;
-    unchar chosen, res;
+    unchar res;
 
-    unchar* output = (unchar*)malloc(img_size * 5);
+    unchar* output = malloc(img_size * 5);
     un out_len = 0;
 
     while (curr_index < img_size) {
-        prev = curr;
-        curr = data[curr_index];
+        previous = current;
+        current = data[curr_index];
         if (curr_index > 0) {
-            buffer[hash(prev)] = prev;
+            buffer[hash(previous)] = previous;
         }
 
-        qoi_op_run = cond_eq(prev, curr);
-        qoi_op_index = cond_eq(curr, buffer[hash(curr)]) ? true : false;
-        qoi_op_diff = cond_diff(curr, prev);
-        qoi_op_luma = cond_luma(curr, prev);
-
-        if (qoi_op_run) {
-            chosen = QOI_OP_RUN;
+        if (cond_eq(current, previous)) {
             un run_len = 1;
-            prev1 = curr;
+            Pixel previous_1 = current;
+            Pixel current_1;
 
             if (curr_index + 1 < img_size) {
-                curr1 = data[curr_index + run_len];
+                Pixel current_1 = data[curr_index + run_len];
             } else {
                 output[out_len] = QOI_OP_RUN;
                 out_len++;
@@ -109,56 +97,51 @@ vector qoi_encode(const void* image, const qoi_desc* desc) {
                 continue;
             }
 
-            while (cond_eq(prev1, curr1) && run_len < 62 &&
+            while (cond_eq(previous_1, current_1) && run_len < 62 &&
                    curr_index + run_len + 1 < img_size) {
                 run_len += 1;
-                prev1 = curr1;
-                curr1 = data[curr_index + run_len];
+                previous_1 = current_1;
+                current_1 = data[curr_index + run_len];
             }
 
             output[out_len] = QOI_OP_RUN + run_len - 1;
             out_len++;
             curr_index += run_len - 1;
-        } else if (qoi_op_index) {
-            chosen = QOI_OP_INDEX;
-            output[out_len] = hash(curr);
+        } else if (cond_eq(current, buffer[hash(current)])) {
+            output[out_len] = hash(current);
             out_len++;
-        } else if (qoi_op_diff) {
-            chosen = QOI_OP_DIFF;
-            res = QOI_OP_DIFF + ((curr.r + 2 - prev.r) << 4) +
-                  ((curr.g + 2 - prev.g) << 2) + curr.b + 2 - prev.b;
+        } else if (cond_diff(current, previous)) {
+            res = QOI_OP_DIFF + ((current.r + 2 - previous.r) << 4) +
+                  ((current.g + 2 - previous.g) << 2) + current.b + 2 -
+                  previous.b;
             output[out_len] = res;
             out_len++;
-        } else if (qoi_op_luma) {
-            chosen = QOI_OP_LUMA;
-            dg = curr.g - prev.g;
-            dr_dg = curr.r - prev.r - dg;
-            db_dg = curr.b - prev.b - dg;
+        } else if (cond_luma(current, previous)) {
+            char dg = current.g - previous.g;
+            char dr_dg = current.r - previous.r - dg;
+            char db_dg = current.b - previous.b - dg;
             output[out_len] = QOI_OP_LUMA + dg + 32;
             output[out_len + 1] = ((dr_dg + 8) << 4) + db_dg + 8;
             out_len += 2;
-        } else if (curr.a == prev.a) {
-            chosen = QOI_OP_RGB;
+        } else if (current.a == previous.a) {
             output[out_len] = QOI_OP_RGB;
-            output[out_len + 1] = curr.r;
-            output[out_len + 2] = curr.g;
-            output[out_len + 3] = curr.b;
+            output[out_len + 1] = current.r;
+            output[out_len + 2] = current.g;
+            output[out_len + 3] = current.b;
             out_len += 4;
         } else {
-            chosen = QOI_OP_RGBA;
             output[out_len] = QOI_OP_RGBA;
-            output[out_len + 1] = curr.r;
-            output[out_len + 2] = curr.g;
-            output[out_len + 3] = curr.b;
-            output[out_len + 4] = curr.a;
+            output[out_len + 1] = current.r;
+            output[out_len + 2] = current.g;
+            output[out_len + 3] = current.b;
+            output[out_len + 4] = current.a;
             out_len += 5;
         }
         curr_index++;
     }
-    output = realloc(output, out_len);
 
     free(buffer);
-    return (vector){output, out_len};
+    return (Vector){realloc(output, out_len), out_len};
 }
 
 un decode_byte(unchar b) {
@@ -178,35 +161,23 @@ un decode_byte(unchar b) {
     return 1;
 }
 
-vector qoi_decode(vector image, const qoi_desc* desc) {
+Vector qoi_decode(Vector image, const qoi_desc* desc) {
     un curr_index = 0;
     unchar* data = (unchar*)image.data;
 
-    pixel* buffer = (pixel*)malloc(256);
-    if (buffer == NULL) {
-        printf("malloc failed! \n");
-        return (vector){0, 0};
-    }
-
+    Pixel* buffer = malloc(sizeof(Pixel) * 64);
     for (un i = 0; i < 64; i++) {
-        buffer[i] = (pixel){.r = 0, .g = 0, .b = 0, .a = 0};
+        buffer[i] = (Pixel){.r = 0, .g = 0, .b = 0, .a = 0};
     }
 
-    pixel prev = {0, 0, 0, 255};
+    Pixel previous = {0, 0, 0, 255};
 
     un out_size = desc->width * desc->height * 4;
+    Pixel* output = (Pixel*)malloc(out_size);
 
-    pixel* output = (pixel*)malloc(out_size);
-    if (output == 0) {
-        free(buffer);
-        printf("malloc failed! \n");
-        return (vector){0, 0};
-    }
-
-    un out_len = 0;
-    unchar byte1, byte2;
+    un output_index = 0;
+    unchar byte1;
     un run;
-    int diff_g;
 
     while (curr_index < image.len) {
         switch (decode_byte(data[curr_index])) {
@@ -214,67 +185,67 @@ vector qoi_decode(vector image, const qoi_desc* desc) {
                 free(buffer);
                 free(output);
                 printf("Incorrect byte sequence!\n");
-                return (vector){0, 0};
+                return (Vector){0, 0};
             case QOI_OP_INDEX:
-                prev = buffer[data[curr_index]];
-                output[out_len] = prev;
-                out_len++;
+                previous = buffer[data[curr_index]];
+                output[output_index] = previous;
+                output_index++;
                 break;
             case QOI_OP_DIFF:
                 byte1 = data[curr_index];
-                prev = (pixel){.r = prev.r + ((byte1 >> 4) - 6),
-                               .g = prev.g + ((byte1 >> 2) % 4 - 2),
-                               .b = prev.b + (byte1 % 4 - 2),
-                               .a = prev.a};
-                output[out_len] = prev;
-                out_len++;
+                previous = (Pixel){.r = previous.r + ((byte1 >> 4) - 6),
+                                   .g = previous.g + ((byte1 >> 2) % 4 - 2),
+                                   .b = previous.b + (byte1 % 4 - 2),
+                                   .a = previous.a};
+                output[output_index] = previous;
+                output_index++;
                 break;
             case QOI_OP_LUMA:
                 byte1 = data[curr_index];
-                byte2 = data[curr_index + 1];
-                diff_g = byte1 - QOI_OP_LUMA - 32;
-                prev = (pixel){.r = prev.r + diff_g + (byte2 >> 4) - 8,
-                               .g = prev.g + diff_g,
-                               .b = prev.b + diff_g + byte2 % 16 - 8,
-                               .a = prev.a};
-                output[out_len] = prev;
-                out_len++;
+                unchar byte2 = data[curr_index + 1];
+                char diff_g = byte1 - QOI_OP_LUMA - 32;
+                previous = (Pixel){.r = previous.r + diff_g + (byte2 >> 4) - 8,
+                                   .g = previous.g + diff_g,
+                                   .b = previous.b + diff_g + byte2 % 16 - 8,
+                                   .a = previous.a};
+                output[output_index] = previous;
+                output_index++;
                 curr_index++;
                 break;
             case QOI_OP_RUN:
                 run = data[curr_index] - QOI_OP_RUN + 1;
                 for (un i = 0; i < run; i++) {
-                    output[out_len + i] = prev;
+                    output[output_index + i] = previous;
                 }
-                out_len += run;
+                output_index += run;
                 break;
             case QOI_OP_RGB:
-                prev = (pixel){.r = data[curr_index + 1],
-                               .g = data[curr_index + 2],
-                               .b = data[curr_index + 3],
-                               .a = prev.a};
-                output[out_len] = prev;
-                out_len++;
+                previous = (Pixel){.r = data[curr_index + 1],
+                                   .g = data[curr_index + 2],
+                                   .b = data[curr_index + 3],
+                                   .a = previous.a};
+                output[output_index] = previous;
+                output_index++;
                 curr_index += 3;
                 break;
             case QOI_OP_RGBA:
-                prev = (pixel){.r = data[curr_index + 1],
-                               .g = data[curr_index + 2],
-                               .b = data[curr_index + 3],
-                               .a = data[curr_index + 4]};
-                output[out_len] = prev;
-                out_len++;
+                previous = (Pixel){.r = data[curr_index + 1],
+                                   .g = data[curr_index + 2],
+                                   .b = data[curr_index + 3],
+                                   .a = data[curr_index + 4]};
+                output[output_index] = previous;
+                output_index++;
                 curr_index += 4;
                 break;
         }
-        buffer[hash(prev)] = prev;
+        buffer[hash(previous)] = previous;
         curr_index++;
     }
     free((void*)buffer);
-    return (vector){realloc(output, out_len * 4), out_len * 4};
+    return (Vector){realloc(output, output_index * 4), output_index * 4};
 }
 
-un write_qoi(const char* path, vector data, const qoi_desc* desc) {
+un write_qoi(const char* path, Vector data, const qoi_desc* desc) {
     FILE* f = fopen(path, "wb");
     if (f == NULL) {
         printf("Error!\n");
@@ -291,25 +262,25 @@ un write_qoi(const char* path, vector data, const qoi_desc* desc) {
     return mg + header + res + on;
 }
 
-vector read_qoi(const char* path, void* desc) {
+Vector read_qoi(const char* path, void* desc) {
     FILE* f = fopen(path, "r");
     if (f == NULL) {
-        return (vector){0, 0};
+        return (Vector){0, 0};
     }
 
     fseek(f, 0, SEEK_END);
     size_t size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    void* buff1 = malloc(4);
-    un magic_s = fread(buff1, 1, 4, f);
-    char* magic = (char*)buff1;
+    char* magic = malloc(4);
+    un magic_s = fread(magic, 1, 4, f);
 
     if (strncmp(magic, "qoif", 4)) {
         printf("Not a .qoi file");
-        return (vector){0, 0};
+        free(magic);
+        return (Vector){0, 0};
     }
-    free(buff1);
+    free(magic);
 
     un desc_s = fread(desc, 1, 10, f);
     un img_size = size - 22;
@@ -317,5 +288,5 @@ vector read_qoi(const char* path, void* desc) {
     un image_s = fread(image, img_size, 1, f);
 
     fclose(f);
-    return (vector){image, img_size};
+    return (Vector){image, img_size};
 }

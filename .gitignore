@@ -1,6 +1,7 @@
 /assets
 *.exe
 qoi
+main
 misc
 *.py
 
